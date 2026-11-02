@@ -1,0 +1,137 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Fleet Command</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#06121f;--pn:#0b2236;--ln:#1e4a66;--sea:#0e3552;--tx:#d8e8f2;--mu:#7f9db3;--ac:#2ec4b6;--hit:#ff4d5e;--miss:#7aa6c2;--am:#f2b84b;color-scheme:dark;box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(120% 80% at 50% 0,#0b2a44,var(--bg) 60%) fixed;color:var(--tx);font:16px/1.45 Barlow,system-ui,sans-serif;min-height:100vh}
+h1,h2,h3,.b,.turn,.ts{font-family:'Barlow Condensed','Arial Narrow',sans-serif}h1{font-size:28px;margin:0;letter-spacing:.02em}h2{font-size:30px;margin:0 0 6px}h3{margin:0 0 6px;font-size:20px}
+.hd{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--ln)}.room{margin-right:12px;color:var(--mu)}
+.pill{padding:3px 10px;border-radius:99px;background:#3a2330;color:#ff9aa5;font-size:14px}.pill.on{background:#0f3b3a;color:var(--ac)}
+.w{max-width:1080px;margin:auto;padding:16px}.nar{max-width:520px}.mu{color:var(--mu)}
+.pn{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:16px;margin-bottom:16px}
+label{display:block;margin:10px 0 4px;color:var(--mu);font-size:14px}
+input,textarea{width:100%;background:var(--bg);color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:10px;font:inherit}textarea{font:12px monospace;word-break:break-all}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.b{background:#12395a;color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:10px 18px;font-size:18px;font-weight:600;cursor:pointer;min-height:44px}.b:hover{background:#17497a}.b.pri{background:var(--ac);color:#04201e;border-color:var(--ac)}.b.g{background:none}.b:disabled{opacity:.4;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--am);outline-offset:2px}
+.bds{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;align-items:flex-start}.bdw{flex:1 1 320px;max-width:460px}.side{flex:1 1 260px;max-width:340px}
+.bd{display:grid;grid-template-columns:repeat(11,1fr);gap:2px;background:var(--ln);padding:2px;border-radius:6px;user-select:none}
+.bd b,.bd i{display:grid;place-items:center;font:600 12px 'Barlow Condensed';color:var(--mu);background:var(--bg);aspect-ratio:1}
+.c{aspect-ratio:1;border:0;background:var(--sea);padding:0;position:relative;min-width:0}.c.ship{background:#8fb3c9}.c.sel{outline:2px solid var(--am);outline-offset:-2px}
+.place .c.ship,.ts{touch-action:none;cursor:grab}
+.hit::after,.miss::after{content:'';position:absolute;inset:25%;border-radius:50%;background:var(--hit)}.miss::after{inset:38%;background:var(--miss)}.sunk{background:#4a1e2a!important}
+.new::after{animation:pop .6s}.new.miss::before{content:'';position:absolute;inset:0;border:2px solid var(--miss);border-radius:50%;animation:rip .9s forwards}
+@keyframes pop{0%{transform:scale(3.5);opacity:0}100%{transform:none;opacity:1}}@keyframes rip{to{transform:scale(2.4);opacity:0}}
+.enemy .c:not(:disabled){cursor:crosshair}.enemy .c:not(:disabled):hover{background:#1a6190}
+.tr{display:grid;gap:6px}.ts{display:flex;align-items:center;gap:6px;background:var(--bg);color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:6px 10px;font-size:17px}.ts span{flex:1;text-align:left}.ts i{width:14px;height:14px;background:#8fb3c9}.ts.sel{border-color:var(--am)}.ts.done{opacity:.45}
+.ghost{position:fixed;transform:translate(-50%,-50%);padding:4px 10px;background:var(--am);color:#000;border-radius:4px;pointer-events:none;z-index:9;font:600 15px 'Barlow Condensed'}
+.st{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}.st div{display:grid}.st small{color:var(--mu)}.st b{font-size:18px}.turn{font-size:22px;color:var(--mu)}.turn.me{color:var(--am)}
+.log{list-style:none;padding:0;margin:16px auto 0;max-width:460px;max-height:160px;overflow:auto;font-size:14px;color:var(--mu)}.log .h{color:var(--hit)}.log b{color:var(--tx)}
+.over{text-align:center}.warn{border-color:var(--hit)}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#12395a;border:1px solid var(--ln);padding:10px 18px;border-radius:8px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:10}#toast.on{opacity:1}#toast.good{background:var(--hit);color:#fff;border-color:var(--hit)}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body><div id="app"></div><div id="toast" role="status"></div>
+<script>
+/* ===== Game logic (no DOM) ===== */
+const L='ABCDEFGHIJ',FL=[['Carrier',5],['Battleship',4],['Cruiser',3],['Submarine',3],['Destroyer',2]];
+const cells=s=>Array.from({length:s.len},(_,i)=>[s.r+(s.h?0:i),s.c+(s.h?i:0)]);
+const inb=([r,c])=>r>=0&&c>=0&&r<10&&c<10;
+const fits=(f,s)=>cells(s).every(inb)&&!f.some(o=>o.name!==s.name&&cells(o).some(([a,b])=>cells(s).some(([x,y])=>a==x&&b==y)));
+const valid=f=>Array.isArray(f)&&f.length==5&&FL.every(([n,l])=>f.filter(s=>s.name==n&&s.len==l).length==1)&&f.every(s=>Number.isInteger(s.r)&&Number.isInteger(s.c)&&fits(f,s));
+function rand(){const f=[];for(const[n,l]of FL){let s;do s={name:n,len:l,r:Math.random()*10|0,c:Math.random()*10|0,h:Math.random()<.5};while(!fits(f,s));f.push(s)}return f}
+const rid=()=>Math.random().toString(36).slice(2,10);
+let G,mode,V,bot,D,P={f:[],sel:'Carrier',d:{}},H={},S={view:location.hash.length>1?'join':'home',room:location.hash.slice(1),saves:[]};
+/* Host-authoritative engine: only the host runs this; fleets never leave it except a ship’s cells once sunk */
+const E={
+ sunk:(me,o)=>o.fleet.filter(s=>cells(s).every(([r,c])=>me.shots.some(x=>x.r==r&&x.c==c))),
+ view(i){const m=G.players[i],o=G.players[1-i];return{t:'sync',you:i,g:!!G.players[1],room:G.room,names:G.players.map(p=>p?p.name:'Waiting…'),status:G.status,turn:G.turn,winner:G.winner,rm:G.rm,ready:G.players.map(p=>!!(p&&p.fleet)),fleet:m.fleet,shots:m.shots,inc:o?o.shots:[],sunk:o&&o.fleet?E.sunk(m,o).map(s=>({name:s.name,cells:cells(s)})):[]}},
+ all(){[0,1].forEach(i=>G.players[i]&&out(i,E.view(i)));save()},
+ act(i,a){const me=G.players[i],o=G.players[1-i],er=m=>out(i,{t:'err',m});
+  if(a.t=='fleet'){if(G.status!='placing'||me.fleet)return er('Fleet is locked.');if(!valid(a.f))return er('Illegal fleet.');me.fleet=a.f.map(s=>({name:s.name,len:s.len,r:s.r,c:s.c,h:!!s.h}));if(o&&o.fleet){G.status='battle';G.turn=0}return E.all()}
+  if(a.t=='fire'){const{r,c}=a;if(G.status!='battle')return er('Battle not active.');if(G.turn!=i)return er('Not your turn.');if(!(Number.isInteger(r)&&Number.isInteger(c)&&r>=0&&c>=0&&r<10&&c<10))return er('Out of range.');if(me.shots.some(x=>x.r==r&&x.c==c))return er('Already fired there.');
+   const hit=o.fleet.some(s=>cells(s).some(([y,x])=>y==r&&x==c));me.shots.push({r,c,hit});
+   const dead=E.sunk(me,o),sk=hit?dead.find(s=>cells(s).some(([y,x])=>y==r&&x==c)):null;
+   if(dead.length==5){G.status='over';G.winner=i}else G.turn=1-i;
+   [0,1].forEach(j=>out(j,{t:'res',by:i,r,c,hit,sk:sk&&{name:sk.name,cells:cells(sk)},turn:G.turn,status:G.status,winner:G.winner}));return save()}
+  if(a.t=='rematch'&&G.status=='over'){G.rm[i]=1;if(G.rm[0]&&G.rm[1]){G.players.forEach(p=>{p.fleet=null;p.shots=[]});G.status='placing';G.winner=null;G.turn=0;G.rm=[0,0]}return E.all()}}
+};
+function out(i,m){if(i==0)onMsg(m);else if(mode=='local')bot(m);else if(H.dc&&H.dc.readyState=='open')H.dc.send(JSON.stringify(m))}
+/* Local bot: plays as guest through the same message protocol */
+function mkBot(){let sh=[],sk=[];const fire=()=>setTimeout(()=>{const free=[];for(let r=0;r<10;r++)for(let c=0;c<10;c++)if(!sh.some(x=>x.r==r&&x.c==c))free.push([r,c]);
+ const n=[];sh.filter(x=>x.hit&&!sk.some(([r,c])=>r==x.r&&c==x.c)).forEach(h=>[[1,0],[-1,0],[0,1],[0,-1]].forEach(([a,b])=>free.some(f=>f[0]==h.r+a&&f[1]==h.c+b)&&n.push([h.r+a,h.c+b])));
+ const par=free.filter(f=>(f[0]+f[1])%2==0),p=n.length?n:par.length?par:free,[r,c]=p[Math.random()*p.length|0];E.act(1,{t:'fire',r,c})},650);
+ return m=>{if(m.t=='sync'){sh=m.shots.slice();sk=m.sunk.flatMap(s=>s.cells);
+  if(m.status=='placing'&&!m.ready[1])setTimeout(()=>E.act(1,{t:'fleet',f:rand()}),300);
+  if(m.status=='battle'&&m.turn==1)fire();if(m.status=='over'&&!m.rm[1])setTimeout(()=>E.act(1,{t:'rematch'}),1200)}
+  if(m.t=='res'){if(m.by==1){sh.push({r:m.r,c:m.c,hit:m.hit});if(m.sk)sk.push(...m.sk.cells)}if(m.status=='battle'&&m.turn==1)fire()}}}
+/* ===== Persistence (host device, IndexedDB) ===== */
+const db=new Promise(r=>{try{const q=indexedDB.open('fleet',1);q.onupgradeneeded=()=>q.result.createObjectStore('g',{keyPath:'room'});q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)}catch(e){r(null)}});
+const save=async()=>{if(mode!='host'||!G)return;const d=await db;if(d){G.at=Date.now();d.transaction('g','readwrite').objectStore('g').put(JSON.parse(JSON.stringify(G)))}};
+const saved=async()=>{const d=await db;return d?new Promise(r=>{const q=d.transaction('g').objectStore('g').getAll();q.onsuccess=()=>r(q.result.sort((a,b)=>b.at-a.at));q.onerror=()=>r([])}):[]};
+/* ===== WebRTC (copy/paste signaling, no server) ===== */
+const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]},enc=o=>btoa(JSON.stringify(o)),dec=s=>JSON.parse(atob(s.replace(/\s/g,'')));
+const gather=pc=>new Promise(r=>{const f=()=>pc.iceGatheringState=='complete'&&r();f();pc.onicegatheringstatechange=f;setTimeout(r,5000)});
+const send=(dc,m)=>dc.readyState=='open'&&dc.send(JSON.stringify(m));
+async function invite(){try{H.pc&&H.pc.close()}catch(e){}const pc=H.pc=new RTCPeerConnection(ICE),dc=pc.createDataChannel('g');H.code='';H.conn=0;
+ dc.onmessage=e=>hostMsg(dc,JSON.parse(e.data));dc.onclose=()=>{if(H.dc===dc){H.conn=0;render()}};
+ await pc.setLocalDescription(await pc.createOffer());await gather(pc);H.code=enc({r:G.room,s:pc.localDescription.sdp});render()}
+function hostMsg(dc,m){if(m.t=='hello'){if(m.room!=G.room)return send(dc,{t:'err',m:'Wrong room.'});let g=G.players[1];
+ if(!g)g=G.players[1]={name:String(m.name||'Guest').slice(0,16),fleet:null,shots:[],tok:rid()};else if(g.tok!=m.tok){send(dc,{t:'err',m:'Room is full.'});return dc.close()}
+ H.dc=dc;H.conn=1;send(dc,{t:'welcome',tok:g.tok,room:G.room});return E.all()}
+ if(H.dc===dc&&G.players[1]&&m.tok===G.players[1].tok)E.act(1,m)}
+async function join(){try{const{r,s}=dec(S.code);mode='guest';const pc=H.pc=new RTCPeerConnection(ICE);S.room=r;
+ pc.ondatachannel=e=>{const dc=H.dc=e.channel;dc.onopen=()=>{let t;try{t=localStorage.getItem('bs-'+r)}catch(x){}S.tok=t;send(dc,{t:'hello',room:r,tok:t,name:S.name||'Guest'});H.conn=1;render()};dc.onmessage=e=>onMsg(JSON.parse(e.data));dc.onclose=()=>{H.conn=0;render()}};
+ await pc.setRemoteDescription({type:'offer',sdp:s});await pc.setLocalDescription(await pc.createAnswer());await gather(pc);S.ans2=enc({s:pc.localDescription.sdp});render()}catch(e){toast('Invalid host code.')}}
+/* ===== Client state + UI ===== */
+function onMsg(m){if(m.t=='err')return toast(m.m);
+ if(m.t=='welcome'){S.tok=m.tok;try{localStorage.setItem('bs-'+m.room,m.tok)}catch(e){}return}
+ if(m.t=='sync'){if(!V||V.status!='placing'&&m.status=='placing')P.f=[];V=m}
+ if(m.t=='res'&&V){const me=m.by==V.you;(me?V.shots:V.inc).push({r:m.r,c:m.c,hit:m.hit});V.turn=m.turn;V.status=m.status;V.winner=m.winner;if(m.sk&&me)V.sunk.push(m.sk);V.last=[m.r,m.c,me];setTimeout(()=>V.last=null,1000);if(m.sk)toast(me?`Ship sunk! You sank their ${m.sk.name}.`:`Your ${m.sk.name} was sunk.`,1)}
+ render()}
+const act=a=>mode=='guest'?(H.dc&&H.dc.readyState=='open'?send(H.dc,{...a,tok:S.tok}):toast('Not connected.')):E.act(0,a);
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>'&#'+c.charCodeAt(0)+';'),on=()=>mode=='local'||H.conn,st=a=>[a.filter(x=>x.hit).length,a.filter(x=>!x.hit).length];
+let tt;function toast(m,g){const t=$('#toast');t.textContent=m;t.className='on'+(g?' good':'');clearTimeout(tt);tt=setTimeout(()=>t.className='',2600)}
+const head=()=>`<header class="hd"><h1>Fleet Command</h1><div>${G||V?`<span class="room">Room ${G?G.room:V.room}</span>`:''}<span class="pill ${on()?'on':''}">${mode=='local'?'Local test':on()?'Connected':mode=='guest'?'Host offline':'Opponent offline'}</span></div></header>`;
+const link=()=>`<div class="pn"><p>Room <b>${G.room}</b>. Room code: <code>${G.room}</code></p><label>1. Send this code to your opponent</label><textarea readonly rows="3" onclick="this.select()">${H.code||'Generating…'}</textarea><label>2. Paste their reply code</label><textarea name="ans" rows="3">${S.ans||''}</textarea><div class="row"><button class="b pri" data-a="conn">Connect</button></div></div>`;
+const ban=()=>mode=='guest'?(H.conn?'':`<div class="w"><div class="pn warn">The host has disconnected. The game is saved on the host’s device — the host must reopen it and send a new invite code. <div class="row"><button class="b" data-a="rejoin">Rejoin with new code</button></div></div></div>`):mode=='host'&&!H.conn?`<details class="w" open><summary>Opponent offline — send a new invite code</summary>${link()}</details>`:'';
+function board(k){const mp=new Map(),sh={};
+ if(k=='enemy'){V.shots.forEach(x=>mp.set(x.r*10+x.c,x.hit?'hit':'miss'));V.sunk.forEach(s=>s.cells.forEach(([r,c])=>mp.set(r*10+c,'hit sunk')))}
+ else{(k=='mine'?V.fleet:P.f).forEach(s=>cells(s).forEach(([r,c])=>sh[r*10+c]=s.name));if(k=='mine')V.inc.forEach(x=>mp.set(x.r*10+x.c,x.hit?'hit':'miss'))}
+ let h=`<div class="bd ${k}"><i></i>${[...L].map(l=>`<b>${l}</b>`).join('')}`;
+ for(let r=0;r<10;r++){h+=`<b>${r+1}</b>`;for(let c=0;c<10;c++){const q=r*10+c,s=sh[q],t=mp.get(q)||'',nw=V.last&&V.last[0]==r&&V.last[1]==c&&V.last[2]==(k=='enemy')?' new':'';
+  h+=`<button class="c ${s?'ship '+(k=='place'&&P.sel==s?'sel':''):''} ${t}${nw}" data-r="${r}" data-c="${c}"${s?` data-ship="${s}"`:''}${k=='enemy'&&!(V.status=='battle'&&V.turn==V.you&&!t&&on())?' disabled':''} aria-label="${L[c]}${r+1}"></button>`}}
+ return h+'</div>'}
+function place(){const rd=V.ready[V.you],all=P.f.length==5,tray=FL.map(([n,l])=>`<button class="ts ${P.sel==n?'sel':''} ${P.f.some(s=>s.name==n)?'done':''}" data-ship="${n}"><span>${n}</span>${'<i></i>'.repeat(l)}</button>`).join('');
+ return head()+ban()+`<div class="w"><div class="bds"><div class="bdw">${board('place')}</div>${rd?`<div class="pn side"><h3>Fleet locked</h3><p class="mu">Waiting for ${esc(V.names[1-V.you])} to finish placing…</p></div>`:`<div class="pn side"><h3>Place your fleet</h3><p class="mu">Drag ships onto the grid, or select one and tap a square.</p><div class="tr">${tray}</div><div class="row"><button class="b" data-a="rot">Rotate</button><button class="b" data-a="rmv">Remove</button><button class="b" data-a="rnd">Random</button><button class="b" data-a="clr">Clear</button></div><button class="b pri" data-a="ok"${all?'':' disabled'}>Confirm fleet</button></div>`}</div></div>`}
+function panel(){const y=V.you,me=V.turn==y,[mh,mm]=st(V.shots),[eh,em]=st(V.inc),left=V.fleet.filter(s=>!cells(s).every(([r,c])=>V.inc.some(x=>x.r==r&&x.c==c&&x.hit))).length;
+ return `<div class="pn st"><div><small>${esc(V.names[y])} (you)</small><b>${left} ships afloat</b><span>${mh} hits, ${mm} misses</span></div><div class="turn ${me?'me':''}">${me?'Your turn — fire!':`${esc(V.names[1-y])} is aiming…`}</div><div><small>${esc(V.names[1-y])}</small><b>${5-V.sunk.length} ships afloat</b><span>${eh} hits, ${em} misses</span></div></div>`}
+function over(){const w=V.winner==V.you;return `<div class="pn over"><h2>${w?'Victory':'Fleet lost'}</h2><p class="mu">${w?'Every enemy ship is sunk.':'Your fleet was sunk.'}</p><div class="row" style="justify-content:center"><button class="b pri" data-a="rem"${V.rm[V.you]?' disabled':''}>${V.rm[V.you]?'Waiting for opponent…':'Rematch'}</button><button class="b g" data-a="leave">Leave</button></div></div>`}
+function hist(){const a=[],y=V.you,n=Math.max(V.shots.length,V.inc.length);for(let i=0;i<n;i++){const p=y==0?[['You',V.shots[i]],['Enemy',V.inc[i]]]:[['Enemy',V.inc[i]],['You',V.shots[i]]];p.forEach(([w,x])=>x&&a.push(`<li class="${x.hit?'h':''}"><b>${w}</b> ${L[x.c]}${x.r+1}: ${x.hit?'hit':'miss'}</li>`))}return `<ol class="log" aria-label="Attack history">${a.reverse().join('')}</ol>`}
+const battle=()=>head()+ban()+`<div class="w">${V.status=='over'?over():panel()}<div class="bds"><div class="bdw"><h3>Enemy waters</h3>${board('enemy')}</div><div class="bdw"><h3>My fleet</h3>${board('mine')}</div></div>${hist()}</div>`;
+function lobby(){const v=S.view;return head()+'<div class="w nar">'+(v=='join'?`<div class="pn"><h2>Join room${S.room?' '+esc(S.room):''}</h2><label>Your name</label><input name="name" value="${esc(S.name||'')}" maxlength="16">${S.ans2?`<label>Send this reply code to the host</label><textarea readonly rows="4" onclick="this.select()">${S.ans2}</textarea><p class="mu">Waiting for the host to connect…</p>`:`<label>Host’s invite code</label><textarea name="code" rows="4">${S.code||''}</textarea><div class="row"><button class="b pri" data-a="join">Create reply code</button></div>`}<button class="b g" data-a="leave">Back</button></div>`:G&&mode=='host'?link():`<div class="pn"><h2>Sink the fleet</h2><p class="mu">Two players, direct connection, no game server.</p><label>Your name</label><input name="name" value="${esc(S.name||'')}" maxlength="16"><div class="row"><button class="b pri" data-a="create">Create room</button><button class="b" data-a="jv">Join room</button><button class="b" data-a="local">Play vs bot</button></div>${S.saves.map((g,i)=>`<button class="b g" data-a="res" data-i="${i}">Resume room ${g.room}</button>`).join('')}</div>`)+'</div>'}
+function render(){$('#app').innerHTML=!V||(mode=='host'&&!V.g)?lobby():V.status=='placing'?place():battle()}
+/* ===== Placement ===== */
+function put(n,r,c,k){const d=P.d[n]!==false,l=FL.find(x=>x[0]==n)[1],s={name:n,len:l,r:d?r:r-k,c:d?c-k:c,h:d};if(!fits(P.f,s))return 0;P.f=P.f.filter(x=>x.name!=n).concat(s);P.d[n]=d;P.sel=FL.map(x=>x[0]).find(m=>!P.f.some(x=>x.name==m))||n;return 1}
+const X={
+ create(){mode='host';G={room:rid().slice(0,5).toUpperCase(),players:[{name:S.name||'Host',fleet:null,shots:[],tok:rid()},null],status:'placing',turn:0,winner:null,rm:[0,0]};onMsg(E.view(0));save();invite()},
+ jv(){S.view='join';render()},
+ local(){mode='local';bot=mkBot();G={room:'LOCAL',players:[{name:S.name||'You',fleet:null,shots:[]},{name:'Bot',fleet:null,shots:[]}],status:'placing',turn:0,winner:null,rm:[0,0]};E.all()},
+ res(b){mode='host';G=S.saves[+b.dataset.i];onMsg(E.view(0));invite()},
+ join,
+ async conn(){try{await H.pc.setRemoteDescription({type:'answer',sdp:dec(S.ans).s});S.ans=''}catch(e){toast('Invalid reply code.')}},
+ rot(){const n=P.sel,s=P.f.find(x=>x.name==n),h=!(s?s.h:P.d[n]!==false);if(s){const t={...s,h};if(fits(P.f,t)){P.f=P.f.map(x=>x==s?t:x);P.d[n]=h}else toast('No room to rotate.')}else P.d[n]=h;render()},
+ rmv(){P.f=P.f.filter(s=>s.name!=P.sel);render()},rnd(){P.f=rand();render()},clr(){P.f=[];render()},
+ ok(){act({t:'fleet',f:P.f})},rem(){act({t:'rematch'})},leave(){location.hash='';location.reload()},
+ rejoin(){V=null;S.view='join';S.ans2='';S.code='';render()}};
+const app=$('#app');
+app.addEventListener('input',e=>{if(e.target.name)S[e.target.name]=e.target.value});
+app.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)return X[b.dataset.a](b);const c=e.target.closest('.c');if(!c)return;const r=+c.dataset.r,k=+c.dataset.c;
+ if(c.closest('.enemy'))return act({t:'fire',r,c:k});
+ if(c.closest('.place')&&!c.dataset.ship&&P.sel&&!P.f.some(s=>s.name==P.sel)){put(P.sel,r,k,0);render()}});
+app.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-ship]');if(!t||!V||V.status!='placing'||V.ready[V.you]||t.closest('.mine'))return;const n=t.dataset.ship,bd=t.classList.contains('c'),s=P.f.find(x=>x.name==n);let k=0;
+ if(bd&&s){k=s.h?+t.dataset.c-s.c:+t.dataset.r-s.r;P.d[n]=s.h}P.sel=n;D={n,k,x:e.clientX,y:e.clientY,s:bd};e.preventDefault()});
+addEventListener('pointermove',e=>{if(!D)return;if(!D.m&&Math.hypot(e.clientX-D.x,e.clientY-D.y)>6){D.m=1;D.g=document.body.appendChild(Object.assign(document.createElement('div'),{className:'ghost',textContent:D.n}))}if(D.g){D.g.style.left=e.clientX+'px';D.g.style.top=e.clientY+'px'}});
+addEventListener('pointerup',e=>{if(!D)return;const d=D;D=null;if(d.g)d.g.remove();
+ if(d.m){const c=document.elementFromPoint(e.clientX,e.clientY),q=c&&c.closest('.place .c');if(q)put(d.n,+q.dataset.r,+q.dataset.c,d.k);else if(d.s)P.f=P.f.filter(s=>s.name!=d.n)}render()});
+saved().then(r=>{S.saves=r;if(!V)render()});render();
+</script></body></html>
