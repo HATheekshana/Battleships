@@ -9,8 +9,11 @@ jobs:
         with: {node-version: 20}
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: 17}
+      - name: Point invite links at the Pages site
+        run: |
+          sed -i "s#const WEB=''#const WEB='https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/'#" www/index.html
       - run: npm install
-      - run: npx cap add android && npx cap sync android
+      - run: npx cap add android && python3 patch-manifest.py && npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:

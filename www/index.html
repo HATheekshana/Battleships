@@ -30,10 +30,10 @@ input,textarea{width:100%;background:var(--bg);color:var(--tx);border:1px solid 
 .over{text-align:center}.warn{border-color:var(--hit)}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#12395a;border:1px solid var(--ln);padding:10px 18px;border-radius:8px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:10}#toast.on{opacity:1}#toast.good{background:var(--hit);color:#fff;border-color:var(--hit)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-</style></head><body><div id="app"></div><div id="toast" role="status"></div>
+a.b{display:inline-block;text-decoration:none;line-height:24px;margin-right:8px}</style><script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script></head><body><div id="app"></div><div id="toast" role="status"></div>
 <script>
 /* ===== Game logic (no DOM) ===== */
-const L='ABCDEFGHIJ',FL=[['Carrier',5],['Battleship',4],['Cruiser',3],['Submarine',3],['Destroyer',2]];
+const WEB='',L='ABCDEFGHIJ',FL=[['Carrier',5],['Battleship',4],['Cruiser',3],['Submarine',3],['Destroyer',2]];
 const cells=s=>Array.from({length:s.len},(_,i)=>[s.r+(s.h?0:i),s.c+(s.h?i:0)]);
 const inb=([r,c])=>r>=0&&c>=0&&r<10&&c<10;
 const fits=(f,s)=>cells(s).every(inb)&&!f.some(o=>o.name!==s.name&&cells(o).some(([a,b])=>cells(s).some(([x,y])=>a==x&&b==y)));
@@ -55,7 +55,7 @@ const E={
    [0,1].forEach(j=>out(j,{t:'res',by:i,r,c,hit,sk:sk&&{name:sk.name,cells:cells(sk)},turn:G.turn,status:G.status,winner:G.winner}));return save()}
   if(a.t=='rematch'&&G.status=='over'){G.rm[i]=1;if(G.rm[0]&&G.rm[1]){G.players.forEach(p=>{p.fleet=null;p.shots=[]});G.status='placing';G.winner=null;G.turn=0;G.rm=[0,0]}return E.all()}}
 };
-function out(i,m){if(i==0)onMsg(m);else if(mode=='local')bot(m);else if(H.dc&&H.dc.readyState=='open')H.dc.send(JSON.stringify(m))}
+function out(i,m){if(i==0)onMsg(m);else if(mode=='local')bot(m);else if(H.dc&&H.dc.open)send(H.dc,m)}
 /* Local bot: plays as guest through the same message protocol */
 function mkBot(){let sh=[],sk=[];const fire=()=>setTimeout(()=>{const free=[];for(let r=0;r<10;r++)for(let c=0;c<10;c++)if(!sh.some(x=>x.r==r&&x.c==c))free.push([r,c]);
  const n=[];sh.filter(x=>x.hit&&!sk.some(([r,c])=>r==x.r&&c==x.c)).forEach(h=>[[1,0],[-1,0],[0,1],[0,-1]].forEach(([a,b])=>free.some(f=>f[0]==h.r+a&&f[1]==h.c+b)&&n.push([h.r+a,h.c+b])));
@@ -68,32 +68,35 @@ function mkBot(){let sh=[],sk=[];const fire=()=>setTimeout(()=>{const free=[];fo
 const db=new Promise(r=>{try{const q=indexedDB.open('fleet',1);q.onupgradeneeded=()=>q.result.createObjectStore('g',{keyPath:'room'});q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)}catch(e){r(null)}});
 const save=async()=>{if(mode!='host'||!G)return;const d=await db;if(d){G.at=Date.now();d.transaction('g','readwrite').objectStore('g').put(JSON.parse(JSON.stringify(G)))}};
 const saved=async()=>{const d=await db;return d?new Promise(r=>{const q=d.transaction('g').objectStore('g').getAll();q.onsuccess=()=>r(q.result.sort((a,b)=>b.at-a.at));q.onerror=()=>r([])}):[]};
-/* ===== WebRTC (copy/paste signaling, no server) ===== */
-const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]},enc=o=>btoa(JSON.stringify(o)),dec=s=>JSON.parse(atob(s.replace(/\s/g,'')));
-const gather=pc=>new Promise(r=>{const f=()=>pc.iceGatheringState=='complete'&&r();f();pc.onicegatheringstatechange=f;setTimeout(r,5000)});
-const send=(dc,m)=>dc.readyState=='open'&&dc.send(JSON.stringify(m));
-async function invite(){try{H.pc&&H.pc.close()}catch(e){}const pc=H.pc=new RTCPeerConnection(ICE),dc=pc.createDataChannel('g');H.code='';H.conn=0;
- dc.onmessage=e=>hostMsg(dc,JSON.parse(e.data));dc.onclose=()=>{if(H.dc===dc){H.conn=0;render()}};
- await pc.setLocalDescription(await pc.createOffer());await gather(pc);H.code=enc({r:G.room,s:pc.localDescription.sdp});render()}
+/* ===== Networking: PeerJS cloud only brokers the handshake; game data flows peer-to-peer (WebRTC) ===== */
+const send=(c,m)=>c.open&&c.send(m),pid=r=>'fleetcmd-'+r.toLowerCase();
+const net=()=>{if(typeof RTCPeerConnection!='function'||!window.Peer)throw Error('This preview blocks WebRTC. Use the APK or host the file on GitHub Pages. Play vs bot works here.')};
+function invite(){try{net();try{H.peer&&H.peer.destroy()}catch(e){}H.conn=0;H.err='';const p=H.peer=new Peer(pid(G.room));
+ p.on('connection',c=>{c.on('data',m=>hostMsg(c,m));c.on('close',()=>{if(H.dc===c){H.conn=0;render()}})});
+ p.on('disconnected',()=>{try{p.reconnect()}catch(e){}});p.on('error',e=>{H.err='Signaling error: '+e.type;render()})}catch(e){H.err=e.message}render()}
 function hostMsg(dc,m){if(m.t=='hello'){if(m.room!=G.room)return send(dc,{t:'err',m:'Wrong room.'});let g=G.players[1];
  if(!g)g=G.players[1]={name:String(m.name||'Guest').slice(0,16),fleet:null,shots:[],tok:rid()};else if(g.tok!=m.tok){send(dc,{t:'err',m:'Room is full.'});return dc.close()}
  H.dc=dc;H.conn=1;send(dc,{t:'welcome',tok:g.tok,room:G.room});return E.all()}
  if(H.dc===dc&&G.players[1]&&m.tok===G.players[1].tok)E.act(1,m)}
-async function join(){try{const{r,s}=dec(S.code);mode='guest';const pc=H.pc=new RTCPeerConnection(ICE);S.room=r;
- pc.ondatachannel=e=>{const dc=H.dc=e.channel;dc.onopen=()=>{let t;try{t=localStorage.getItem('bs-'+r)}catch(x){}S.tok=t;send(dc,{t:'hello',room:r,tok:t,name:S.name||'Guest'});H.conn=1;render()};dc.onmessage=e=>onMsg(JSON.parse(e.data));dc.onclose=()=>{H.conn=0;render()}};
- await pc.setRemoteDescription({type:'offer',sdp:s});await pc.setLocalDescription(await pc.createAnswer());await gather(pc);S.ans2=enc({s:pc.localDescription.sdp});render()}catch(e){toast('Invalid host code.')}}
+function join(){try{net();const r=(S.room||'').trim().toUpperCase();if(!r)return toast('Enter a room ID.');S.room=r;mode='guest';try{H.peer&&H.peer.destroy()}catch(e){}
+ const p=H.peer=new Peer();p.on('error',e=>toast(e.type=='peer-unavailable'?'Room not found. Is the host online?':'Join failed: '+e.type));
+ p.on('open',()=>{const c=H.dc=p.connect(pid(r),{serialization:'json',reliable:true});
+  c.on('open',()=>{let t;try{t=localStorage.getItem('bs-'+r)}catch(x){}S.tok=t;send(c,{t:'hello',room:r,tok:t,name:S.name||'Guest'});H.conn=1;render()});
+  c.on('data',onMsg);c.on('close',()=>{H.conn=0;render()})});toast('Connecting…')}catch(e){toast(e.message||String(e))}}
 /* ===== Client state + UI ===== */
 function onMsg(m){if(m.t=='err')return toast(m.m);
  if(m.t=='welcome'){S.tok=m.tok;try{localStorage.setItem('bs-'+m.room,m.tok)}catch(e){}return}
  if(m.t=='sync'){if(!V||V.status!='placing'&&m.status=='placing')P.f=[];V=m}
  if(m.t=='res'&&V){const me=m.by==V.you;(me?V.shots:V.inc).push({r:m.r,c:m.c,hit:m.hit});V.turn=m.turn;V.status=m.status;V.winner=m.winner;if(m.sk&&me)V.sunk.push(m.sk);V.last=[m.r,m.c,me];setTimeout(()=>V.last=null,1000);if(m.sk)toast(me?`Ship sunk! You sank their ${m.sk.name}.`:`Your ${m.sk.name} was sunk.`,1)}
  render()}
-const act=a=>mode=='guest'?(H.dc&&H.dc.readyState=='open'?send(H.dc,{...a,tok:S.tok}):toast('Not connected.')):E.act(0,a);
+const act=a=>mode=='guest'?(H.dc&&H.dc.open?send(H.dc,{...a,tok:S.tok}):toast('Not connected.')):E.act(0,a);
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>'&#'+c.charCodeAt(0)+';'),on=()=>mode=='local'||H.conn,st=a=>[a.filter(x=>x.hit).length,a.filter(x=>!x.hit).length];
 let tt;function toast(m,g){const t=$('#toast');t.textContent=m;t.className='on'+(g?' good':'');clearTimeout(tt);tt=setTimeout(()=>t.className='',2600)}
 const head=()=>`<header class="hd"><h1>Fleet Command</h1><div>${G||V?`<span class="room">Room ${G?G.room:V.room}</span>`:''}<span class="pill ${on()?'on':''}">${mode=='local'?'Local test':on()?'Connected':mode=='guest'?'Host offline':'Opponent offline'}</span></div></header>`;
-const link=()=>`<div class="pn"><p>Room <b>${G.room}</b>. Room code: <code>${G.room}</code></p><label>1. Send this code to your opponent</label><textarea readonly rows="3" onclick="this.select()">${H.code||'Generating…'}</textarea><label>2. Paste their reply code</label><textarea name="ans" rows="3">${S.ans||''}</textarea><div class="row"><button class="b pri" data-a="conn">Connect</button></div></div>`;
-const ban=()=>mode=='guest'?(H.conn?'':`<div class="w"><div class="pn warn">The host has disconnected. The game is saved on the host’s device — the host must reopen it and send a new invite code. <div class="row"><button class="b" data-a="rejoin">Rejoin with new code</button></div></div></div>`):mode=='host'&&!H.conn?`<details class="w" open><summary>Opponent offline — send a new invite code</summary>${link()}</details>`:'';
+const base=()=>WEB||(location.protocol=='https:'&&!/claudeusercontent/.test(location.host)?location.origin+location.pathname:'');
+const andro=()=>/Android/i.test(navigator.userAgent)&&!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());
+const link=()=>`<div class="pn"><h2>Room ${G.room}</h2><p class="mu">Send your opponent this room ID${base()?' or this link':''}:</p>${base()?`<p><code onclick="getSelection().selectAllChildren(this)">${base()}#${G.room}</code></p>`:''}<p>${H.err?`<b style="color:var(--hit)">${esc(H.err)}</b>`:H.conn?'Opponent connected.':'Waiting for opponent…'}</p></div>`;
+const ban=()=>mode=='guest'?(H.conn?'':`<div class="w"><div class="pn warn">The host has disconnected. The game is saved on the host’s device — the host must reopen it and resume the game. <div class="row"><button class="b" data-a="rejoin">Rejoin</button></div></div></div>`):mode=='host'&&!H.conn?`<details class="w" open><summary>Opponent offline — waiting for them to reconnect</summary>${link()}</details>`:'';
 function board(k){const mp=new Map(),sh={};
  if(k=='enemy'){V.shots.forEach(x=>mp.set(x.r*10+x.c,x.hit?'hit':'miss'));V.sunk.forEach(s=>s.cells.forEach(([r,c])=>mp.set(r*10+c,'hit sunk')))}
  else{(k=='mine'?V.fleet:P.f).forEach(s=>cells(s).forEach(([r,c])=>sh[r*10+c]=s.name));if(k=='mine')V.inc.forEach(x=>mp.set(x.r*10+x.c,x.hit?'hit':'miss'))}
@@ -108,7 +111,7 @@ function panel(){const y=V.you,me=V.turn==y,[mh,mm]=st(V.shots),[eh,em]=st(V.inc
 function over(){const w=V.winner==V.you;return `<div class="pn over"><h2>${w?'Victory':'Fleet lost'}</h2><p class="mu">${w?'Every enemy ship is sunk.':'Your fleet was sunk.'}</p><div class="row" style="justify-content:center"><button class="b pri" data-a="rem"${V.rm[V.you]?' disabled':''}>${V.rm[V.you]?'Waiting for opponent…':'Rematch'}</button><button class="b g" data-a="leave">Leave</button></div></div>`}
 function hist(){const a=[],y=V.you,n=Math.max(V.shots.length,V.inc.length);for(let i=0;i<n;i++){const p=y==0?[['You',V.shots[i]],['Enemy',V.inc[i]]]:[['Enemy',V.inc[i]],['You',V.shots[i]]];p.forEach(([w,x])=>x&&a.push(`<li class="${x.hit?'h':''}"><b>${w}</b> ${L[x.c]}${x.r+1}: ${x.hit?'hit':'miss'}</li>`))}return `<ol class="log" aria-label="Attack history">${a.reverse().join('')}</ol>`}
 const battle=()=>head()+ban()+`<div class="w">${V.status=='over'?over():panel()}<div class="bds"><div class="bdw"><h3>Enemy waters</h3>${board('enemy')}</div><div class="bdw"><h3>My fleet</h3>${board('mine')}</div></div>${hist()}</div>`;
-function lobby(){const v=S.view;return head()+'<div class="w nar">'+(v=='join'?`<div class="pn"><h2>Join room${S.room?' '+esc(S.room):''}</h2><label>Your name</label><input name="name" value="${esc(S.name||'')}" maxlength="16">${S.ans2?`<label>Send this reply code to the host</label><textarea readonly rows="4" onclick="this.select()">${S.ans2}</textarea><p class="mu">Waiting for the host to connect…</p>`:`<label>Host’s invite code</label><textarea name="code" rows="4">${S.code||''}</textarea><div class="row"><button class="b pri" data-a="join">Create reply code</button></div>`}<button class="b g" data-a="leave">Back</button></div>`:G&&mode=='host'?link():`<div class="pn"><h2>Sink the fleet</h2><p class="mu">Two players, direct connection, no game server.</p><label>Your name</label><input name="name" value="${esc(S.name||'')}" maxlength="16"><div class="row"><button class="b pri" data-a="create">Create room</button><button class="b" data-a="jv">Join room</button><button class="b" data-a="local">Play vs bot</button></div>${S.saves.map((g,i)=>`<button class="b g" data-a="res" data-i="${i}">Resume room ${g.room}</button>`).join('')}</div>`)+'</div>'}
+function lobby(){const v=S.view;return head()+'<div class="w nar">'+(v=='join'?`<div class="pn"><h2>Join room${S.room?' '+esc(S.room):''}</h2><label>Your name</label><input name="name" value="${esc(S.name||'')}" maxlength="16"><label>Room ID</label><input name="room" value="${esc(S.room||'')}" maxlength="8"><div class="row"><button class="b pri" data-a="join">Join</button></div>${H.conn?'<p class="mu">Connected — waiting for host…</p>':''}${andro()&&S.room?`<a class="b" href="intent://join/${esc(S.room)}#Intent;scheme=fleetcommand;package=com.ascworld.fleetcommand;S.browser_fallback_url=${encodeURIComponent(location.href)};end">Open in app</a>`:''}<button class="b g" data-a="leave">Back</button></div>`:G&&mode=='host'?link():`<div class="pn"><h2>Sink the fleet</h2><p class="mu">Two players, direct connection, no game server.</p><label>Your name</label><input name="name" value="${esc(S.name||'')}" maxlength="16"><div class="row"><button class="b pri" data-a="create">Create room</button><button class="b" data-a="jv">Join room</button><button class="b" data-a="local">Play vs bot</button></div>${S.saves.map((g,i)=>`<button class="b g" data-a="res" data-i="${i}">Resume room ${g.room}</button>`).join('')}</div>`)+'</div>'}
 function render(){$('#app').innerHTML=!V||(mode=='host'&&!V.g)?lobby():V.status=='placing'?place():battle()}
 /* ===== Placement ===== */
 function put(n,r,c,k){const d=P.d[n]!==false,l=FL.find(x=>x[0]==n)[1],s={name:n,len:l,r:d?r:r-k,c:d?c-k:c,h:d};if(!fits(P.f,s))return 0;P.f=P.f.filter(x=>x.name!=n).concat(s);P.d[n]=d;P.sel=FL.map(x=>x[0]).find(m=>!P.f.some(x=>x.name==m))||n;return 1}
@@ -118,11 +121,10 @@ const X={
  local(){mode='local';bot=mkBot();G={room:'LOCAL',players:[{name:S.name||'You',fleet:null,shots:[]},{name:'Bot',fleet:null,shots:[]}],status:'placing',turn:0,winner:null,rm:[0,0]};E.all()},
  res(b){mode='host';G=S.saves[+b.dataset.i];onMsg(E.view(0));invite()},
  join,
- async conn(){try{await H.pc.setRemoteDescription({type:'answer',sdp:dec(S.ans).s});S.ans=''}catch(e){toast('Invalid reply code.')}},
  rot(){const n=P.sel,s=P.f.find(x=>x.name==n),h=!(s?s.h:P.d[n]!==false);if(s){const t={...s,h};if(fits(P.f,t)){P.f=P.f.map(x=>x==s?t:x);P.d[n]=h}else toast('No room to rotate.')}else P.d[n]=h;render()},
  rmv(){P.f=P.f.filter(s=>s.name!=P.sel);render()},rnd(){P.f=rand();render()},clr(){P.f=[];render()},
  ok(){act({t:'fleet',f:P.f})},rem(){act({t:'rematch'})},leave(){location.hash='';location.reload()},
- rejoin(){V=null;S.view='join';S.ans2='';S.code='';render()}};
+ rejoin(){V=null;S.view='join';render()}};
 const app=$('#app');
 app.addEventListener('input',e=>{if(e.target.name)S[e.target.name]=e.target.value});
 app.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)return X[b.dataset.a](b);const c=e.target.closest('.c');if(!c)return;const r=+c.dataset.r,k=+c.dataset.c;
@@ -133,5 +135,7 @@ app.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-ship]');i
 addEventListener('pointermove',e=>{if(!D)return;if(!D.m&&Math.hypot(e.clientX-D.x,e.clientY-D.y)>6){D.m=1;D.g=document.body.appendChild(Object.assign(document.createElement('div'),{className:'ghost',textContent:D.n}))}if(D.g){D.g.style.left=e.clientX+'px';D.g.style.top=e.clientY+'px'}});
 addEventListener('pointerup',e=>{if(!D)return;const d=D;D=null;if(d.g)d.g.remove();
  if(d.m){const c=document.elementFromPoint(e.clientX,e.clientY),q=c&&c.closest('.place .c');if(q)put(d.n,+q.dataset.r,+q.dataset.c,d.k);else if(d.s)P.f=P.f.filter(s=>s.name!=d.n)}render()});
+const AppP=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App;
+AppP&&AppP.addListener('appUrlOpen',e=>{const m=/join\/([A-Za-z0-9]+)/.exec(e.url||'');if(m&&!V){S.room=m[1].toUpperCase();S.view='join';render()}});
 saved().then(r=>{S.saves=r;if(!V)render()});render();
 </script></body></html>
